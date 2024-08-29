@@ -1,0 +1,167 @@
+# This R script was developed to study the effect of data variability in enzyme kinetics studies using Monte Carlo simulation.
+
+# The data displayed in this script is for a Michaelis-Menten enzyme kinetics profile and the kinetic parameters and substrate concentration were created based on studies we have performed in our laboratory.
+
+# The experimental design used in this simulation calculated the initial rate (v0) by subtracting the final substrate concentration quantified in the metabolism samples after incubation (Sf) from the initial substrate concentration (S) dividing by the protein concentration in the incubation (cprot) and incubation time (tinc). 
+
+# Feel free to change the enzyme kinetic parameters to observe the effect in the data.
+
+# Script by Icaro S. Perovani PhD Candidate at the Universidade de Sao Paulo
+
+# Defining the enzyme kinetic parameters and variables
+
+
+S = c(0.2,0.4,0.8,1,2,5,10,15,20,25,30) # Initial Substrate concentration, unities are µmol/L
+
+S_graph = c() # Variable for plotting the Monte Carlo Simulation
+
+v0 = c() # Initial rate values for each substrate concentration, unities are nmol/mg/min
+
+Sf = c() # Substrate concentration after the incubation, unities are µmol/L
+
+Sf_sd = c() # Standard deviations for each S in the simulation, unities are µmol/L
+
+Km = 4 # Km value of substrate, unities are µmol/L
+
+Vmax = 0.08 # Maximum enzyme reaction rate, unities are nmol/mg/min
+
+cprot = 0.5 # Protein concentration, unities are mg/mL
+
+tinc = 60   #  Incubation time, unities are min
+
+Sf_simulated = list() # List containing the Sf_simulated values, unities are in µmol/L
+
+v0_simulated = list() # List containing the v0 simulated values unities are in nmol/mg/min
+
+exp_sim = list() # List containing the v0 values for the simulated experiment. These are drawn from the Monte Carlo Simulation, unities are in nmol/mg/min
+
+diffp = c() # Metabolism relative to the initial Substrate concentration in %
+
+prob = list() # Probability of getting a value for Sf < S in the Monte Carlo simulation, unities are %
+
+rsd = 0.15 # Relative SD value for each Sf
+
+plot_S = numeric() # Variable to store the S values to be plotted after the Monte Carlo simulation   
+
+plot_v0_sim = numeric() # Variable to store the v0 values from the Monte Carlo simulation
+
+
+# Calculations
+
+for (i in seq_along(S)){   # This for loop is calculating each value of v0, and Sf and storing them in their respective vectors
+  
+  v0[i] = Vmax*S[i]/(Km + S[i])
+  
+  Sf[i] = S[i] - v0[i]*cprot*tinc
+  
+  if (S[i] < v0[i]*cprot*tinc){ # This if loop equals Sf to zero if we have a negative Sf value
+    
+    Sf = 0
+  }
+
+  diffp[i] = 100*(S[i]-Sf[i])/S[i]
+  
+  Sf_sd[i] = rsd*Sf[i]
+  
+  }
+  
+
+# Monte Carlo Simulation
+
+set.seed(123) # This was added here to allow for reproducibility of the data simulated
+
+n_sim = 10000 # This is setting the value for the number of simulation
+
+library(truncnorm)
+
+for (i in seq_along(Sf)){        # This part is performing the Monte Carlo simulation and is keeping the simulated values within +- one unity of the standard deviation
+  low_bound = Sf[i] - Sf_sd[i]
+  up_bound = Sf[i] + Sf_sd[i]
+  Sf_simulated[[i]] = rtruncnorm(n_sim,
+                                 a = low_bound,
+                                 b = up_bound,
+                                 mean = Sf[i], 
+                                 sd = Sf_sd[i])
+ }
+
+Sf_simulated_df = as.data.frame(Sf_simulated) # This is transforming the simulated data into a data frame to allow for easier data visualization of the simulated values
+
+colnames(Sf_simulated_df) = S
+
+for (i in seq_along(S)){     # This for loop calculated the probability of getting Sf > S in the simulation
+  
+  prob[i] = 100*sum(Sf_simulated[[i]] > S[i])/n_sim
+
+}
+
+for(i in seq_along(S)){    # This line is calculating each v0 value for the Monte Carlo simulation
+  
+  v0_simulated[[i]] = length(Sf_simulated[[i]])
+  
+  for (j in seq_along(Sf_simulated[[i]])){
+    
+    v0_simulated[[i]][[j]] = (S[i] - Sf_simulated[[i]][[j]])/(tinc*cprot)
+    
+  }
+  
+  exp_sim[[i]] = sample(v0_simulated[[i]],  # This line is randomly drawing a triplicate of v0 for each substrate concentration evaluated
+                        size = 3, 
+                        replace = F)
+}
+
+
+# Plots
+
+# Plot of initial rate (v0) vs substrate concentration (S)
+
+plot(S, 
+     v0, 
+     type = "b", 
+     pch = 19, 
+     col = "blue", 
+     xlab = "Substrate Concentration (µmol/L)", 
+     ylab = "Initial Rate (nmol/mg/min)", 
+     main = "Initial Rate vs Substrate Concentration")
+
+# Plot of metabolism percentage difference (diffp) vs substrate concentration (S)
+
+plot(S, 
+     diffp, 
+     type = "b", 
+     pch = 19, 
+     col = "red", 
+     xlab = "Substrate Concentration (µmol/L)", 
+     ylab = "Metabolism Relative to Initial Concentration (%)", 
+     main = "Metabolism % Difference vs Substrate Concentration")
+
+# Plot the probability of getting a final substrate concentration in the incubation higher than the initial substrate concentration
+
+plot(S,prob,
+    pch = 19,
+    col = "blue",
+    xlab = "Substrate concentration (µmol/L)",
+    ylab = "Probability of Sf > S (%)")
+
+# Plots the result of the simulated experiment after drawing a triplicate of v0
+
+for (i in seq_along(S)){
+  
+  sub_conc = rep(S[i],
+               length(exp_sim[[i]]))
+  
+  sim_rates = unlist(exp_sim[[i]])
+  
+  plot_S = c(plot_S,
+             sub_conc)
+  
+  plot_v0_sim = c(plot_v0_sim,
+                  sim_rates)
+}
+
+ plot(plot_S,
+      plot_v0_sim,
+      pch = 19,
+      col = "blue",
+      xlab = "Substrate Concentration (µmol/L)", 
+      ylab = "Simulated Initial Rate (nmol/mg/min)", 
+      main = "Simulated Initial Rate vs Substrate Concentration - RSD = 15%")
